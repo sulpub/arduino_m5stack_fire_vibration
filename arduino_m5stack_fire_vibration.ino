@@ -61,6 +61,10 @@ const int chipSelect = 4;
 #define WAIT_DIAPORAMA 5000
 #define NB_PICTURES   11
 
+#define WAIT_REFRESH_SCREEN  2000
+
+#define MEAN_POINT_IMU   16    //nb point for mean meas calculation
+
 #define M5STACK_FIRE_NEO_NUM_LEDS 10
 #define M5STACK_FIRE_NEO_DATA_PIN 15
 #define NEOPIXEL_NUMBER 10
@@ -372,6 +376,7 @@ unsigned long ulong_time_old_screen = 0;
 unsigned long ulong_time_old_animate = 0;
 unsigned long ulong_time_now = 0;
 unsigned long ulong_time_cycle = 0;
+unsigned long ulong_refresh_data = 0;
 long int delay_cycle = 0;
 
 unsigned long ulong_time_min_tilt = 0;
@@ -448,7 +453,44 @@ float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor dat
 float quaternion_vect[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
 
+//data max min
 
+int int_mat_accx[MEAN_POINT_IMU];
+int int_mat_accy[MEAN_POINT_IMU];
+int int_mat_accz[MEAN_POINT_IMU];
+int int_mat_gyrx[MEAN_POINT_IMU];
+int int_mat_gyry[MEAN_POINT_IMU];
+int int_mat_gyrz[MEAN_POINT_IMU];
+
+int int_indice_imu = 0;
+
+int min_accx = 30000;
+int min_accy = 30000;
+int min_accz = 30000;
+int max_accx = -30000;
+int max_accy = -30000;
+int max_accz = -30000;
+int min_max_accx = 0;
+int min_max_accy = 0;
+int min_max_accz = 0;
+
+int min_gyrx = 30000;
+int min_gyry = 30000;
+int min_gyrz = 30000;
+int max_gyrx = -30000;
+int max_gyry = -30000;
+int max_gyrz = -30000;
+int min_max_gyrx = 0;
+int min_max_gyry = 0;
+int min_max_gyrz = 0;
+
+float float_ax = 0;
+float float_ay = 0;
+float float_az = 0;
+
+float float_gx = 0;
+float float_gy = 0;
+float float_gz = 0;
 
 //function declaration zone
 void readMagData(int16_t * destination);
@@ -1280,6 +1322,21 @@ void loop()
     magbias[1] = 15168.213655967384;  // User environmental x-axis correction in milliGauss
     magbias[2] = -2725.084387493947;  // User environmental x-axis correction in milliGauss
 
+
+    //matrice save min max
+    int_mat_accx[int_indice_imu % MEAN_POINT_IMU] = accelCount[0];
+    int_mat_accy[int_indice_imu % MEAN_POINT_IMU] = accelCount[1];
+    int_mat_accz[int_indice_imu % MEAN_POINT_IMU] = accelCount[2];
+
+    int_mat_gyrx[int_indice_imu % MEAN_POINT_IMU] = gyroCount[0];
+    int_mat_gyry[int_indice_imu % MEAN_POINT_IMU] = gyroCount[1];
+    int_mat_gyrz[int_indice_imu % MEAN_POINT_IMU] = gyroCount[2];
+
+    //calcul min max
+    int_min_max_acc_gyr();
+
+    int_indice_imu++;
+
     /*
        Mean MagX : -9483.550048517109  milliGauss
        Mean MagY : 15129.753912626955  milliGauss
@@ -1505,7 +1562,7 @@ void loop()
             sprintf(buffer_ws, "datalog_%0.3d.txt", int_num_datalog);
             M5.Lcd.setCursor(170, 10); M5.Lcd.print(buffer_ws);
             M5.Lcd.setTextSize(1);
-            
+
             delay(2000);
 
             //init itteruption buttonC
@@ -1705,48 +1762,92 @@ void loop()
     // affichage sur l'ecran du M5STACK
     if (true)
     {
-      if (bool_block_screen_anim == false)
+      if (ulong_time_now >= ulong_refresh_data)
       {
-        //debug valeur brute
-        //erase screen message
-        M5.Lcd.setTextColor(GREEN , BLACK);
-        M5.Lcd.setTextSize(2);
+        ulong_refresh_data = ulong_time_now + WAIT_REFRESH_SCREEN;
 
-        sprintf(buffer_ws, "Time: %d            ", ulong_time_now);
-        M5.Lcd.setCursor(10, 16); M5.Lcd.print(buffer_ws);
+        if (bool_block_screen_anim == false)
+        {
+          //debug valeur brute
+          //erase screen message
+          M5.Lcd.setTextColor(GREEN , BLACK);
+          M5.Lcd.setTextSize(4);
 
-        sprintf(buffer_ws, "cycle %d             ", delay_cycle);
-        M5.Lcd.setCursor(10, 32); M5.Lcd.print(buffer_ws);
+          int offset_y = 32;
+          int pos_y_txt = 16;
 
-        sprintf(buffer_ws, "%0.3f", ax);
-        M5.Lcd.setCursor(10, 48); M5.Lcd.print(buffer_ws);
+          float_ax = (float)min_max_accx * aRes;
+          float_ay = (float)min_max_accy * aRes;
+          float_az = (float)min_max_accz * aRes;
 
-        sprintf(buffer_ws, "%0.3f", ay);
-        M5.Lcd.setCursor(10, 64); M5.Lcd.print(buffer_ws);
+          float_gx = (float)min_max_gyrx * gRes;
+          float_gy = (float)min_max_gyry * gRes;
+          float_gz = (float)min_max_gyrz * gRes;
 
-        sprintf(buffer_ws, "%0.3f", az);
-        M5.Lcd.setCursor(10, 80); M5.Lcd.print(buffer_ws);
+          sprintf(buffer_ws, "Time:%d            ", ulong_time_now/1000);
+          pos_y_txt = 16;
+          M5.Lcd.setCursor(10, pos_y_txt); M5.Lcd.print(buffer_ws);
+
+          sprintf(buffer_ws, "cycle %d             ", delay_cycle);
+          pos_y_txt = pos_y_txt + offset_y;
+          M5.Lcd.setCursor(10, pos_y_txt); M5.Lcd.print(buffer_ws);
+
+          sprintf(buffer_ws, "AccX %0.3f        ", float_ax);
+          pos_y_txt = pos_y_txt + offset_y;
+          M5.Lcd.setCursor(10, pos_y_txt); M5.Lcd.print(buffer_ws);
+
+          sprintf(buffer_ws, "AccY %0.3f        ", float_ay);
+          pos_y_txt = pos_y_txt + offset_y;
+          M5.Lcd.setCursor(10, pos_y_txt); M5.Lcd.print(buffer_ws);
+
+          sprintf(buffer_ws, "AccZ %0.3f        ", float_az);
+          pos_y_txt = pos_y_txt + offset_y;
+          M5.Lcd.setCursor(10, pos_y_txt); M5.Lcd.print(buffer_ws);
+
+          /*
+                  sprintf(buffer_ws, "%0.3f        ", gx);
+                  M5.Lcd.setCursor(10, 96); M5.Lcd.print(buffer_ws);
+
+                  sprintf(buffer_ws, "%0.3f        ", gy);
+                  M5.Lcd.setCursor(10, 112); M5.Lcd.print(buffer_ws);
+
+                  sprintf(buffer_ws, "%0.3f        ", gz);
+                  M5.Lcd.setCursor(10, 128); M5.Lcd.print(buffer_ws);
 
 
-        sprintf(buffer_ws, "%0.3f", gx);
-        M5.Lcd.setCursor(10, 96); M5.Lcd.print(buffer_ws);
+                  sprintf(buffer_ws, "%0.3f        ", mx);
+                  M5.Lcd.setCursor(120, 48); M5.Lcd.print(buffer_ws);
 
-        sprintf(buffer_ws, "%0.3f", gy);
-        M5.Lcd.setCursor(10, 112); M5.Lcd.print(buffer_ws);
+                  sprintf(buffer_ws, "%0.3f        ", my);
+                  M5.Lcd.setCursor(120, 64); M5.Lcd.print(buffer_ws);
 
-        sprintf(buffer_ws, "%0.3f", gz);
-        M5.Lcd.setCursor(10, 128); M5.Lcd.print(buffer_ws);
+                  sprintf(buffer_ws, "%0.3f        ", mz);
+                  M5.Lcd.setCursor(120, 80); M5.Lcd.print(buffer_ws);
+          */
+        }
 
+        //init min max
+        min_accx = 30000;
+        min_accy = 30000;
+        min_accz = 30000;
+        max_accx = -30000;
+        max_accy = -30000;
+        max_accz = -30000;
+        min_max_accx = 0;
+        min_max_accy = 0;
+        min_max_accz = 0;
 
-        sprintf(buffer_ws, "%0.3f", mx);
-        M5.Lcd.setCursor(120, 48); M5.Lcd.print(buffer_ws);
+        min_gyrx = 30000;
+        min_gyry = 30000;
+        min_gyrz = 30000;
+        max_gyrx = -30000;
+        max_gyry = -30000;
+        max_gyrz = -30000;
+        min_max_gyrx = 0;
+        min_max_gyry = 0;
+        min_max_gyrz = 0;
 
-        sprintf(buffer_ws, "%0.3f", my);
-        M5.Lcd.setCursor(120, 64); M5.Lcd.print(buffer_ws);
-
-        sprintf(buffer_ws, "%0.3f", mz);
-        M5.Lcd.setCursor(120, 80); M5.Lcd.print(buffer_ws);
-      }
+      } //if refresh screen
 
     }
     else
@@ -2600,4 +2701,66 @@ void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * des
   while (Wire.available()) {
     dest[i++] = Wire.read();
   }         // Put read results in the Rx buffer
+}
+
+
+
+/*
+     _____  .__            _____                  .___   _____   ____ ___
+    /     \ |__| ____     /     \ _____  ___  ___ |   | /     \ |    |   \
+   /  \ /  \|  |/    \   /  \ /  \\__  \ \  \/  / |   |/  \ /  \|    |   /
+  /    Y    \  |   |  \ /    Y    \/ __ \_>    <  |   /    Y    \    |  /
+  \____|__  /__|___|  / \____|__  (____  /__/\_ \ |___\____|__  /______/
+          \/        \/          \/     \/      \/             \/
+*/
+void int_min_max_acc_gyr(void)
+{
+  //ACCX
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_accx > int_mat_accx[z]) min_accx = int_mat_accx[z];
+    if ( max_accx < int_mat_accx[z]) max_accx = int_mat_accx[z];
+  }
+  min_max_accx = (max_accx - min_accx);
+
+  //ACCY
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_accy > int_mat_accy[z]) min_accy = int_mat_accy[z];
+    if ( max_accy < int_mat_accy[z]) max_accy = int_mat_accy[z];
+  }
+  min_max_accy = (max_accy - min_accy);
+
+  //ACCZ
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_accz > int_mat_accz[z]) min_accz = int_mat_accz[z];
+    if ( max_accz < int_mat_accz[z]) max_accz = int_mat_accz[z];
+  }
+  min_max_accz = (max_accz - min_accz);
+
+  //GYRX
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_gyrx > int_mat_gyrx[z]) min_gyrx = int_mat_gyrx[z];
+    if ( max_gyrx < int_mat_gyrx[z]) max_gyrx = int_mat_gyrx[z];
+  }
+  min_max_gyrx = (max_gyrx - min_gyrx);
+
+  //GYRY
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_gyry > int_mat_gyry[z]) min_gyry = int_mat_gyry[z];
+    if ( max_gyry < int_mat_gyry[z]) max_gyry = int_mat_gyry[z];
+  }
+  min_max_gyry = (max_gyry - min_gyry);
+
+  //GYRZ
+  for (int z = 0; z < MEAN_POINT_IMU; z++)
+  {
+    if ( min_gyrz > int_mat_gyrz[z]) min_gyrz = int_mat_gyrz[z];
+    if ( max_gyrz < int_mat_gyrz[z]) max_gyrz = int_mat_gyrz[z];
+  }
+  min_max_gyrz = (max_gyrz - min_gyrz);
+
 }
